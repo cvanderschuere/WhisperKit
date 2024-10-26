@@ -1263,12 +1263,21 @@ struct WhisperTokenizerWrapper: WhisperTokenizer {
 }
 
 extension WhisperTokenizerWrapper: Tokenizer {
+    
     func tokenize(text: String) -> [String] {
         tokenizer.tokenize(text: text)
     }
 
     func encode(text: String) -> [Int] {
         tokenizer.encode(text: text)
+    }
+    
+    func encode(text: String, addSpecialTokens: Bool) -> [Int] {
+        tokenizer.encode(text: text, addSpecialTokens: addSpecialTokens)
+    }
+    
+    func callAsFunction(_ text: String, addSpecialTokens: Bool) -> [Int] {
+        tokenizer.callAsFunction(text, addSpecialTokens: addSpecialTokens)
     }
 
     func decode(tokens: [Int]) -> String {
@@ -1278,9 +1287,35 @@ extension WhisperTokenizerWrapper: Tokenizer {
     func convertTokenToId(_ token: String) -> Int? {
         tokenizer.convertTokenToId(token)
     }
+    
+    func convertTokensToIds(_ tokens: [String]) -> [Int?] {
+        tokenizer.convertTokensToIds(tokens)
+    }
 
+    
     func convertIdToToken(_ id: Int) -> String? {
         tokenizer.convertIdToToken(id)
+    }
+    
+    func convertIdsToTokens(_ ids: [Int]) -> [String?] {
+        tokenizer.convertIdsToTokens(ids)
+    }
+
+    func applyChatTemplate(messages: [[String : String]]) throws -> [Int] {
+        try tokenizer.applyChatTemplate(messages: messages)
+    }
+    
+    func applyChatTemplate(messages: [[String : String]], chatTemplate: Tokenizers.ChatTemplateArgument) throws -> [Int] {
+        try tokenizer.applyChatTemplate(messages: messages, chatTemplate: chatTemplate)
+    }
+    
+    
+    func applyChatTemplate(messages: [[String : String]], chatTemplate: String) throws -> [Int] {
+        try tokenizer.applyChatTemplate(messages: messages, chatTemplate: chatTemplate)
+    }
+    
+    func applyChatTemplate(messages: [[String : String]], chatTemplate: Tokenizers.ChatTemplateArgument?, addGenerationPrompt: Bool, truncation: Bool, maxLength: Int?, tools: [[String : Any]]?) throws -> [Int] {
+        try tokenizer.applyChatTemplate(messages: messages, chatTemplate: chatTemplate, addGenerationPrompt: addGenerationPrompt, truncation: truncation, maxLength: maxLength, tools: tools)
     }
 
     var bosToken: String? {

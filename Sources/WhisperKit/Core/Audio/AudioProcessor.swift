@@ -61,6 +61,8 @@ public protocol AudioProcessing {
 
     /// Starts recording audio from the specified input device, resetting the previous state
     func startRecordingLive(inputDeviceID: DeviceID?, callback: (([Float]) -> Void)?) throws
+    
+    func startRecordingLive(audioEngine: AVAudioEngine, callback: (([Float]) -> Void)?) throws
 
     /// Pause recording
     func pauseRecording()
@@ -86,6 +88,10 @@ public extension AudioProcessing {
 
     func startRecordingLive(inputDeviceID: DeviceID? = nil, callback: (([Float]) -> Void)?) throws {
         try startRecordingLive(inputDeviceID: inputDeviceID, callback: callback)
+    }
+    
+    func startRecordingLive(audioEngine: AVAudioEngine, callback: (([Float]) -> Void)?) throws {
+        try startRecordingLive(audioEngine: audioEngine, callback: callback)
     }
 
     func resumeRecordingLive(inputDeviceID: DeviceID? = nil, callback: (([Float]) -> Void)?) throws {
@@ -169,6 +175,7 @@ public extension AudioProcessing {
 @available(macOS 13, iOS 16, watchOS 10, visionOS 1, *)
 public class AudioProcessor: NSObject, AudioProcessing {
     private var lastInputDevice: DeviceID?
+    private var inputTapInstall: Bool = false
     public var audioEngine: AVAudioEngine?
     public var audioSamples: ContiguousArray<Float> = []
     public var audioEnergy: [(rel: Float, avg: Float, max: Float, min: Float)] = []
@@ -799,16 +806,13 @@ public extension AudioProcessor {
         }
         #endif
     }
-
-    func setupEngine(inputDeviceID: DeviceID? = nil) throws -> AVAudioEngine {
-        let audioEngine = AVAudioEngine()
+    
+    func setupEngine(audioEngine: AVAudioEngine) throws {
         let inputNode = audioEngine.inputNode
-
-        #if os(macOS)
-        if let inputDeviceID = inputDeviceID {
-            assignAudioInput(inputNode: inputNode, inputDeviceID: inputDeviceID)
-        }
-        #endif
+        
+        guard !inputTapInstall else { return }
+        
+        try inputNode.setVoiceProcessingEnabled(true)
 
         let hardwareSampleRate = audioEngine.inputNode.inputFormat(forBus: 0).sampleRate
         let inputFormat = inputNode.outputFormat(forBus: 0)
@@ -842,10 +846,30 @@ public extension AudioProcessor {
             let newBufferArray = Self.convertBufferToArray(buffer: buffer)
             self.processBuffer(newBufferArray)
         }
+        inputTapInstall = true
 
         audioEngine.prepare()
         try audioEngine.start()
+    }
+    
+    func removeTap(audioEngine: AVAudioEngine) {
+        let inputNode = audioEngine.inputNode
+        
+        guard inputTapInstall else { return }
+        
+        inputNode.removeTap(onBus: 0)
+        inputTapInstall = false
+    }
 
+    func audioEngine(for inputDeviceID: DeviceID? = nil) -> AVAudioEngine {
+        let audioEngine = AVAudioEngine()
+        
+        #if os(macOS)
+        if let inputDeviceID = inputDeviceID {
+            assignAudioInput(inputNode: audioEngine.inputNode, inputDeviceID: inputDeviceID)
+        }
+        #endif
+        
         return audioEngine
     }
 
@@ -856,17 +880,22 @@ public extension AudioProcessor {
     }
 
     func startRecordingLive(inputDeviceID: DeviceID? = nil, callback: (([Float]) -> Void)? = nil) throws {
+        try startRecordingLive(audioEngine: audioEngine(for: inputDeviceID), callback: callback)
+        
+        lastInputDevice = inputDeviceID
+    }
+    
+    func startRecordingLive(audioEngine: AVAudioEngine, callback: (([Float]) -> Void)?) throws {
         audioSamples = []
         audioEnergy = []
-
+        
         try? setupAudioSessionForDevice()
-
-        audioEngine = try setupEngine(inputDeviceID: inputDeviceID)
+        
+        try setupEngine(audioEngine: audioEngine)
+        self.audioEngine = audioEngine
 
         // Set the callback
         audioBufferCallback = callback
-
-        lastInputDevice = inputDeviceID
     }
 
     func resumeRecordingLive(inputDeviceID: DeviceID? = nil, callback: (([Float]) -> Void)? = nil) throws {
@@ -875,7 +904,8 @@ public extension AudioProcessor {
         if inputDeviceID == lastInputDevice {
             try audioEngine?.start()
         } else {
-            audioEngine = try setupEngine(inputDeviceID: inputDeviceID)
+            audioEngine = audioEngine(for: inputDeviceID)
+            try setupEngine(audioEngine: audioEngine!)
         }
 
         // Set the callback only if the provided callback is not nil
@@ -885,17 +915,18 @@ public extension AudioProcessor {
     }
 
     func pauseRecording() {
-        audioEngine?.pause()
+        guard let audioEngine else { return }
+        removeTap(audioEngine: audioEngine)
     }
 
     func stopRecording() {
+        guard let audioEngine else { return }
+        
         // Remove the tap on any attached node
-        audioEngine?.attachedNodes.forEach { node in
-            node.removeTap(onBus: 0)
-        }
+        removeTap(audioEngine: audioEngine)
 
-        // Stop the audio engine
-        audioEngine?.stop()
-        audioEngine = nil
+//        // Stop the audio engine
+//        audioEngine.stop()
+//        self.audioEngine = nil
     }
 }
